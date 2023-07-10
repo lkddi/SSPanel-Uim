@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Utils\Telegram\Commands;
 
-use App\Utils\Telegram\Callbacks\Callback;
+use App\Utils\Telegram\Callback;
 use App\Utils\Telegram\TelegramTools;
 use Telegram\Bot\Actions;
 use Telegram\Bot\Commands\Command;
@@ -18,12 +18,12 @@ final class MenuCommand extends Command
     /**
      * @var string Command Name
      */
-    protected $name = 'menu';
+    protected string $name = 'menu';
 
     /**
      * @var string Command Description
      */
-    protected $description = '[私聊]     用户主菜单、个人中心.';
+    protected string $description = '[私聊]     用户主菜单、个人中心.';
 
     /**
      * {@inheritdoc}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Middleware;
 
+use App\Services\Auth as AuthService;
 use App\Services\View;
 use Exception;
 use Psr\Http\Message\ResponseInterface;
@@ -16,6 +17,7 @@ use Slim\Exception\HttpNotFoundException;
 use Slim\Factory\AppFactory;
 use Slim\Handlers\ErrorHandler as SlimErrorHandler;
 use Throwable;
+use function Sentry\captureException;
 
 final class ErrorHandler implements MiddlewareInterface
 {
@@ -24,10 +26,24 @@ final class ErrorHandler implements MiddlewareInterface
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        $user = AuthService::getUser();
+        $path = $request->getUri()->getPath();
+
+        if (str_contains($path, '/admin') && ! $user->is_admin) {
+            $response_factory = AppFactory::determineResponseFactory();
+            $response = $response_factory->createResponse(302);
+
+            if ($user->isLogin) {
+                return $response->withHeader('Location', '/user');
+            }
+
+            return $response->withHeader('Location', '/auth/login');
+        }
+
         try {
             $response = $handler->handle($request);
         } catch (HttpNotFoundException | HttpMethodNotAllowedException $e) {
-            // 404 or 405 throwed by router
+            // 404 or 405 thrown by router
             $code = $e->getCode();
             $response_factory = AppFactory::determineResponseFactory();
             $response = $response_factory->createResponse($code);
@@ -36,7 +52,12 @@ final class ErrorHandler implements MiddlewareInterface
             $response = $response->withStatus($code);
         } catch (Throwable $e) {
             $response_factory = AppFactory::determineResponseFactory();
-            if ($_ENV['debug'] === true) {
+
+            if ($_ENV['sentry_dsn'] !== '') {
+                captureException($e);
+            }
+
+            if ($_ENV['debug']) {
                 $callable_resolver = new CallableResolver(null);
                 $error_handler = new SlimErrorHandler($callable_resolver, $response_factory);
                 $response = $error_handler($request, $e, true, true, false);
@@ -46,6 +67,7 @@ final class ErrorHandler implements MiddlewareInterface
                 $response->getBody()->write($smarty->fetch('500.tpl'));
             }
         }
+
         return $response;
     }
 }

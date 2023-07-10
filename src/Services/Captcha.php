@@ -32,11 +32,12 @@ final class Captcha
 
         switch (Setting::obtain('captcha_provider')) {
             case 'turnstile':
-                if ($param['turnstile'] !== '') {
+                $turnstile = $param['turnstile'] ?? '';
+                if ($turnstile !== '') {
                     $postdata = http_build_query(
                         [
                             'secret' => Setting::obtain('turnstile_secret'),
-                            'response' => $param['turnstile'],
+                            'response' => $turnstile,
                         ]
                     );
                     $opts = ['http' => [
@@ -45,18 +46,23 @@ final class Captcha
                         'content' => $postdata,
                     ],
                     ];
-                    $json = file_get_contents('https://challenges.cloudflare.com/turnstile/v0/siteverify', false, stream_context_create($opts));
+                    $json = file_get_contents(
+                        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+                        false,
+                        stream_context_create($opts)
+                    );
                     $result = json_decode($json)->success;
                 }
                 break;
             case 'geetest':
-                if ($param['geetest'] !== '') {
+                $geetest = $param['geetest'] ?? [];
+                if ($geetest !== []) {
                     $captcha_id = Setting::obtain('geetest_id');
                     $captcha_key = Setting::obtain('geetest_key');
-                    $lot_number = $param['geetest']['lot_number'];
-                    $captcha_output = $param['geetest']['captcha_output'];
-                    $pass_token = $param['geetest']['pass_token'];
-                    $gen_time = $param['geetest']['gen_time'];
+                    $lot_number = $geetest['lot_number'];
+                    $captcha_output = $geetest['captcha_output'];
+                    $pass_token = $geetest['pass_token'];
+                    $gen_time = $geetest['gen_time'];
                     $sign_token = hash_hmac('sha256', $lot_number, $captcha_key);
                     $postdata = http_build_query(
                         [
@@ -76,7 +82,7 @@ final class Captcha
                         ],
                     ];
                     $json = file_get_contents(
-                        'http://gcaptcha4.geetest.com/validate?captcha_id=' . $captcha_id,
+                        'https://gcaptcha4.geetest.com/validate?captcha_id=' . $captcha_id,
                         false,
                         stream_context_create($opts)
                     );
@@ -85,6 +91,8 @@ final class Captcha
                     }
                 }
                 break;
+            default:
+                return false;
         }
 
         return $result;

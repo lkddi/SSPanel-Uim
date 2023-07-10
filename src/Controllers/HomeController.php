@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
-use App\Models\InviteCode;
 use App\Services\Auth;
 use App\Utils\Telegram\Process;
 use Exception;
@@ -29,16 +28,6 @@ final class HomeController extends BaseController
     /**
      * @throws Exception
      */
-    public function code(ServerRequest $request, Response $response, array $args): ResponseInterface
-    {
-        $codes = InviteCode::where('user_id', '=', '0')->take(10)->get();
-
-        return $response->write($this->view()->assign('codes', $codes)->fetch('code.tpl'));
-    }
-
-    /**
-     * @throws Exception
-     */
     public function tos(ServerRequest $request, Response $response, array $args): ResponseInterface
     {
         return $response->write($this->view()->fetch('tos.tpl'));
@@ -58,24 +47,9 @@ final class HomeController extends BaseController
     }
 
     /**
-     * @throws TelegramSDKException
-     */
-    public function telegram(ServerRequest $request, Response $response, array $args): ResponseInterface
-    {
-        $token = $request->getQueryParam('token');
-        if ($token === $_ENV['telegram_request_token']) {
-            Process::index();
-            $result = '1';
-        } else {
-            $result = '0';
-        }
-        return $response->write($result);
-    }
-
-    /**
      * @throws Exception
      */
-    public function page404(ServerRequest $request, Response $response, array $args): ResponseInterface
+    public function notFound(ServerRequest $request, Response $response, array $args): ResponseInterface
     {
         return $response->write($this->view()->fetch('404.tpl'));
     }
@@ -83,7 +57,7 @@ final class HomeController extends BaseController
     /**
      * @throws Exception
      */
-    public function page405(ServerRequest $request, Response $response, array $args): ResponseInterface
+    public function methodNotAllowed(ServerRequest $request, Response $response, array $args): ResponseInterface
     {
         return $response->write($this->view()->fetch('405.tpl'));
     }
@@ -91,8 +65,25 @@ final class HomeController extends BaseController
     /**
      * @throws Exception
      */
-    public function page500(ServerRequest $request, Response $response, array $args): ResponseInterface
+    public function internalServerError(ServerRequest $request, Response $response, array $args): ResponseInterface
     {
         return $response->write($this->view()->fetch('500.tpl'));
+    }
+
+    /**
+     * @throws TelegramSDKException
+     */
+    public function telegram(ServerRequest $request, Response $response, array $args): ResponseInterface
+    {
+        $token = $request->getQueryParam('token');
+
+        if ($_ENV['enable_telegram'] && $token === $_ENV['telegram_request_token']) {
+            Process::index($request);
+            $result = '1';
+        } else {
+            $result = '0';
+        }
+
+        return $response->write($result);
     }
 }

@@ -17,12 +17,12 @@ final class CheckinCommand extends Command
     /**
      * @var string Command Name
      */
-    protected $name = 'checkin';
+    protected string $name = 'checkin';
 
     /**
      * @var string Command Description
      */
-    protected $description = '[群组/私聊] 每日签到.';
+    protected string $description = '[群组/私聊] 每日签到.';
 
     /**
      * {@inheritdoc}
@@ -36,7 +36,7 @@ final class CheckinCommand extends Command
         $ChatID = $Message->getChat()->getId();
 
         if ($ChatID < 0) {
-            if (Setting::obtain('telegram_group_quiet') === true) {
+            if (Setting::obtain('telegram_group_quiet')) {
                 // 群组中不回应
                 return null;
             }

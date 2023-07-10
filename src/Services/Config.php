@@ -23,7 +23,6 @@ final class Config
 
             'jump_delay' => $_ENV['jump_delay'],
             'enable_analytics_code' => $_ENV['enable_analytics_code'],
-            'enable_ticket' => $_ENV['enable_ticket'],
 
             'enable_kill' => $_ENV['enable_kill'],
             'enable_change_email' => $_ENV['enable_change_email'],
@@ -34,13 +33,18 @@ final class Config
             'subscribeLog' => $_ENV['subscribeLog'],
             'subscribeLog_keep_days' => $_ENV['subscribeLog_keep_days'],
 
-            'enable_auto_detect_ban' => $_ENV['enable_auto_detect_ban'],
-            'auto_detect_ban_type' => $_ENV['auto_detect_ban_type'],
-            'auto_detect_ban_number' => $_ENV['auto_detect_ban_number'],
-            'auto_detect_ban_time' => $_ENV['auto_detect_ban_time'],
-            'auto_detect_ban' => $_ENV['auto_detect_ban'],
+            'enable_r2_client_download' => $_ENV['enable_r2_client_download'],
+        ];
+    }
 
-            'sentry_dsn' => ! isset($_ENV['sentry_dsn']) ? $_ENV['sentry_dsn'] : null,
+    public static function getRedisConfig(): array
+    {
+        return [
+            'host' => $_ENV['redis_host'],
+            'port' => $_ENV['redis_port'],
+            'connectTimeout' => $_ENV['redis_timeout'],
+            'auth' => [$_ENV['redis_username'], $_ENV['redis_password']],
+            'ssl' => ['verify_peer' => $_ENV['redis_ssl']],
         ];
     }
 
@@ -56,6 +60,7 @@ final class Config
             'charset' => $_ENV['db_charset'],
             'collation' => $_ENV['db_collation'],
             'prefix' => $_ENV['db_prefix'],
+            'port' => $_ENV['db_port'],
         ];
     }
 

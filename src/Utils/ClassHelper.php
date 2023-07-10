@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Utils;
 
+use function is_null;
+
 final class ClassHelper
 {
     private static mixed $composer = null;
@@ -44,8 +46,8 @@ final class ClassHelper
         return array_filter($this->getClasses(), static function ($class) use ($termUpper) {
             $className = strtoupper($class);
             if (
-                str_starts_with($className, $termUpper) and
-                ! str_contains($className, strtoupper('Abstract')) and
+                str_starts_with($className, $termUpper) &&
+                ! str_contains($className, strtoupper('Abstract')) &&
                 ! str_contains($className, strtoupper('Interface'))
             ) {
                 return $class;

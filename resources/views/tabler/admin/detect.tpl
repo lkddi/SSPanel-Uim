@@ -1,4 +1,4 @@
-{include file='admin/tabler_header.tpl'}
+{include file='admin/header.tpl'}
 
 <div class="page-wrapper">
     <div class="container-xl">
@@ -12,9 +12,9 @@
                         <span class="home-subtitle">查看站点中的审计规则</span>
                     </div>
                 </div>
-                <div class="col-auto ms-auto d-print-none">
+                <div class="col-auto">
                     <div class="btn-list">
-                        <button href="#" class="btn btn-primary d-none d-sm-inline-block" data-bs-toggle="modal"
+                        <button href="#" class="btn btn-primary" data-bs-toggle="modal"
                             data-bs-target="#add-detect-dialog">
                             <i class="icon ti ti-plus"></i>
                             添加审计规则
@@ -55,7 +55,7 @@
                 </div>
                 <div class="modal-body">
                     {foreach $details['add_dialog'] as $from}
-                        {if $from['type'] == 'input'}
+                        {if $from['type'] === 'input'}
                             <div class="form-group mb-3 row">
                                 <label class="form-label col-3 col-form-label">{$from['info']}</label>
                                 <div class="col">
@@ -64,14 +64,14 @@
                                 </div>
                             </div>
                         {/if}
-                        {if $from['type'] == 'textarea'}
+                        {if $from['type'] === 'textarea'}
                             <div class="form-group mb-3 row">
                                 <label class="form-label col-3 col-form-label">{$from['info']}</label>
                                 <textarea id="{$from['id']}" class="col form-control" rows="{$from['rows']}"
                                     placeholder="{$from['placeholder']}"></textarea>
                             </div>
                         {/if}
-                        {if $from['type'] == 'select'}
+                        {if $from['type'] === 'select'}
                             <div class="form-group mb-3 row">
                                 <label class="form-label col-3 col-form-label">{$from['info']}</label>
                                 <div class="col">
@@ -87,7 +87,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn me-auto" data-bs-dismiss="modal">取消</button>
-                    <button id="add-invite-button" type="button" class="btn btn-primary" data-bs-dismiss="modal">提交</button>
+                    <button id="add-detect-button" type="button" class="btn btn-primary" data-bs-dismiss="modal">提交</button>
                 </div>
             </div>
         </div>
@@ -154,7 +154,7 @@
                     {/foreach}
                 },
                 success: function(data) {
-                    if (data.ret == 1) {
+                    if (data.ret === 1) {
                         $('#success-message').text(data.msg);
                         $('#success-dialog').modal('show');
                         reloadTableAjax();
@@ -169,15 +169,15 @@
         function deleteRule(rule_id) {
             $('#notice-message').text('确定删除此审计规则？');
             $('#notice-dialog').modal('show');
-            $('#notice-confirm').on('click', function() {
+            $('#notice-confirm').off('click').on('click', function() {
                 $.ajax({
                     url: "/admin/detect/" + rule_id,
                     type: 'DELETE',
                     dataType: "json",
                     success: function(data) {
-                        if (data.ret == 1) {
-                            $('#success-message').text(data.msg);
-                            $('#success-dialog').modal('show');
+                        if (data.ret === 1) {
+                            $('#success-noreload-message').text(data.msg);
+                            $('#success-noreload-dialog').modal('show');
                             reloadTableAjax();
                         } else {
                             $('#fail-message').text(data.msg);
@@ -192,7 +192,11 @@
             table;
         }
 
+        function reloadTableAjax() {
+            table.ajax.reload(null, false);
+        }
+
         loadTable();
     </script>
 
-{include file='admin/tabler_footer.tpl'}
+{include file='admin/footer.tpl'}

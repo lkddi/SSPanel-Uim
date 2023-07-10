@@ -21,12 +21,12 @@ final class InfoCommand extends Command
     /**
      * @var string Command Name
      */
-    protected $name = 'info';
+    protected string $name = 'info';
 
     /**
      * @var string Command Description
      */
-    protected $description = '[群组]     获取被回复消息的用户信息，管理员命令.';
+    protected string $description = '[群组]     获取被回复消息的用户信息，管理员命令.';
 
     public function handle(): void
     {
@@ -50,7 +50,7 @@ final class InfoCommand extends Command
                 $AdminUser = User::where('is_admin', 1)->where('telegram_id', $SendUser['id'])->first();
                 if ($AdminUser === null) {
                     // 非管理员回复消息
-                    if (Setting::obtain('enable_not_admin_reply') === true && Setting::obtain('not_admin_reply_msg') !== '') {
+                    if (Setting::obtain('enable_not_admin_reply') && Setting::obtain('not_admin_reply_msg') !== '') {
                         $this->replyWithMessage(
                             [
                                 'text' => Setting::obtain('not_admin_reply_msg'),

@@ -7,6 +7,7 @@ namespace App\Controllers\User;
 use App\Controllers\BaseController;
 use App\Models\Invoice;
 use App\Models\Paylist;
+use App\Models\UserMoneyLog;
 use App\Services\Payment;
 use App\Utils\Tools;
 use Exception;
@@ -64,7 +65,7 @@ final class InvoiceController extends BaseController
             $paylist = Paylist::where('invoice_id', $invoice->id)->where('status', 1)->first();
         }
 
-        $invoice->status_text = Tools::getInvoiceStatus($invoice);
+        $invoice->status_text = $invoice->status();
         $invoice->create_time = Tools::toDateTime($invoice->create_time);
         $invoice->update_time = Tools::toDateTime($invoice->update_time);
         $invoice->pay_time = Tools::toDateTime($invoice->pay_time);
@@ -103,8 +104,17 @@ final class InvoiceController extends BaseController
             ]);
         }
 
+        $money_before = $user->money;
         $user->money -= $invoice->price;
         $user->save();
+
+        (new UserMoneyLog())->addMoneyLog(
+            $user->id,
+            (float) $money_before,
+            (float) $user->money,
+            -$invoice->price,
+            '支付账单 #' . $invoice->id
+        );
 
         $invoice->status = 'paid_balance';
         $invoice->update_time = time();
@@ -119,11 +129,11 @@ final class InvoiceController extends BaseController
 
     public function ajax(ServerRequest $request, Response $response, array $args): Response|ResponseInterface
     {
-        $invoices = Invoice::orderBy('id', 'desc')->get();
+        $invoices = Invoice::orderBy('id', 'desc')->where('user_id', $this->user->id)->get();
 
         foreach ($invoices as $invoice) {
             $invoice->op = '<a class="btn btn-blue" href="/user/invoice/' . $invoice->id . '/view">查看</a>';
-            $invoice->status = Tools::getInvoiceStatus($invoice);
+            $invoice->status = $invoice->status();
             $invoice->create_time = Tools::toDateTime($invoice->create_time);
             $invoice->update_time = Tools::toDateTime($invoice->update_time);
             $invoice->pay_time = Tools::toDateTime($invoice->pay_time);

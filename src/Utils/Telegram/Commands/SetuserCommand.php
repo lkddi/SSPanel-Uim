@@ -10,6 +10,7 @@ use App\Utils\Telegram\Reply;
 use App\Utils\Telegram\TelegramTools;
 use Telegram\Bot\Actions;
 use Telegram\Bot\Commands\Command;
+use function count;
 use function in_array;
 use function json_decode;
 
@@ -21,12 +22,12 @@ final class SetuserCommand extends Command
     /**
      * @var string Command Name
      */
-    protected $name = 'setuser';
+    protected string $name = 'setuser';
 
     /**
      * @var string Command Description
      */
-    protected $description = '[群组/私聊] 修改用户数据，管理员命令.';
+    protected string $description = '[群组/私聊] 修改用户数据，管理员命令.';
 
     public function handle(): void
     {
@@ -46,19 +47,20 @@ final class SetuserCommand extends Command
             'username' => $Message->getFrom()->getUsername(),
         ];
 
-        if (! in_array($SendUser['id'], json_decode(Setting::obtain('telegram_admins')))) {
+        if (! in_array($SendUser['id'], json_decode(Setting::obtain('telegram_admins'), true))) {
             $AdminUser = User::where('is_admin', 1)->where('telegram_id', $SendUser['id'])->first();
-            if ($AdminUser === null) {
+            if ($AdminUser === null
+                && Setting::obtain('enable_not_admin_reply')
+                && Setting::obtain('not_admin_reply_msg') !== ''
+            ) {
                 // 非管理员回复消息
-                if (Setting::obtain('enable_not_admin_reply') === true && Setting::obtain('not_admin_reply_msg') !== '') {
-                    $this->replyWithMessage(
-                        [
-                            'text' => Setting::obtain('not_admin_reply_msg'),
-                            'parse_mode' => 'HTML',
-                            'reply_to_message_id' => $MessageID,
-                        ]
-                    );
-                }
+                $this->replyWithMessage(
+                    [
+                        'text' => Setting::obtain('not_admin_reply_msg'),
+                        'parse_mode' => 'HTML',
+                        'reply_to_message_id' => $MessageID,
+                    ]
+                );
             }
         }
 

@@ -8,6 +8,7 @@ use App\Models\Setting;
 use Exception;
 use Mailgun\Mailgun as MailgunService;
 use Psr\Http\Client\ClientExceptionInterface;
+use function count;
 
 final class Mailgun extends Base
 {
@@ -21,7 +22,7 @@ final class Mailgun extends Base
         $this->config = $this->getConfig();
         $this->mg = MailgunService::create($this->config['key']);
         $this->domain = $this->config['domain'];
-        $this->sender = $this->config['sender'];
+        $this->sender = $this->config['sender_name'] . ' <' . $this->config['sender'] . '>';
     }
 
     public function getConfig(): array
@@ -32,12 +33,12 @@ final class Mailgun extends Base
             'key' => $configs['mailgun_key'],
             'domain' => $configs['mailgun_domain'],
             'sender' => $configs['mailgun_sender'],
+            'sender_name' => $configs['mailgun_sender_name'],
         ];
     }
 
     /**
      * @throws Exception
-     * @throws ClientExceptionInterface
      * @throws ClientExceptionInterface
      */
     public function send($to, $subject, $text, $file): void

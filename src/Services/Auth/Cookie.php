@@ -8,6 +8,7 @@ use App\Models\Node;
 use App\Models\User;
 use App\Utils;
 use App\Utils\Hash;
+use function strval;
 use function time;
 
 final class Cookie extends Base
@@ -21,7 +22,7 @@ final class Cookie extends Base
             'uid' => strval($uid),
             'email' => $user->email,
             'key' => $key,
-            'ip' => md5($_SERVER['REMOTE_ADDR'] . $_ENV['key'] . $uid . $expire_in),
+            'ip' => Hash::ipHash($_SERVER['REMOTE_ADDR'], $uid, $expire_in),
             'expire_in' => strval($expire_in),
         ], $expire_in);
     }
@@ -45,9 +46,9 @@ final class Cookie extends Base
             return $user;
         }
 
-        if ($_ENV['enable_login_bind_ip'] === true) {
+        if ($_ENV['enable_login_bind_ip']) {
             $nodes = Node::where('node_ip', '=', $_SERVER['REMOTE_ADDR'])->first();
-            if (($nodes === null) && $ipHash !== md5($_SERVER['REMOTE_ADDR'] . $_ENV['key'] . $uid . $expire_in)) {
+            if (($nodes === null) && $ipHash !== Hash::ipHash($_SERVER['REMOTE_ADDR'], $uid, $expire_in)) {
                 return $user;
             }
         }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\DB;
 use App\Services\Mail;
 use App\Utils\Hash;
 use App\Utils\Telegram;
@@ -12,9 +13,17 @@ use App\Utils\Tools;
 use Exception;
 use Psr\Http\Client\ClientExceptionInterface;
 use Ramsey\Uuid\Uuid;
+use function array_merge;
+use function date;
 use function in_array;
+use function is_null;
 use function json_encode;
+use function md5;
+use function random_int;
+use function round;
+use function str_replace;
 use function time;
+use const PHP_EOL;
 
 final class User extends Model
 {
@@ -24,8 +33,8 @@ final class User extends Model
      * @var bool
      */
     public bool $isLogin;
-    protected $connection = 'default';
 
+    protected $connection = 'default';
     protected $table = 'user';
 
     /**
@@ -35,19 +44,17 @@ final class User extends Model
      */
     protected $casts = [
         'port' => 'int',
-        'is_admin' => 'boolean',
         'node_speedlimit' => 'float',
-        'sendDailyMail' => 'int',
+        'daily_mail_enable' => 'int',
         'ref_by' => 'int',
     ];
 
     /**
-     * Gravatar 头像地址
+     * DiceBear 头像
      */
-    public function getGravatarAttribute(): string
+    public function getDiceBearAttribute(): string
     {
-        $hash = md5(strtolower(trim($this->email)));
-        return 'https://www.gravatar.com/avatar/' . $hash . '?&d=identicon';
+        return 'https://api.dicebear.com/6.x/identicon/svg?seed=' . md5($this->email);
     }
 
     /**
@@ -77,9 +84,9 @@ final class User extends Model
     /**
      * 最后使用时间
      */
-    public function lastSsTime(): string
+    public function lastUseTime(): string
     {
-        return $this->t === 0 || $this->t === null ? '从未使用喵' : Tools::toDateTime($this->t);
+        return $this->last_use_time === 0 ? '从未使用' : Tools::toDateTime($this->last_use_time);
     }
 
     /**
@@ -141,25 +148,37 @@ final class User extends Model
     /**
      * 生成新的 UUID
      */
-    public function generateUUID($s): bool
+    public function generateUUID(): bool
     {
-        $this->uuid = Uuid::uuid3(
-            Uuid::NAMESPACE_DNS,
-            $this->email . '|' . $s
-        );
-        return $this->save();
+        for ($i = 0; $i < 10; $i++) {
+            $uuid = Uuid::uuid4();
+            $is_uuid_used = User::where('uuid', $uuid)->first();
+
+            if ($is_uuid_used === null) {
+                $this->uuid = Uuid::uuid4();
+                return $this->save();
+            }
+        }
+
+        return false;
     }
 
     /**
      * 生成新的 API Token
      */
-    public function generateApiToken($s): bool
+    public function generateApiToken(): bool
     {
-        $this->api_token = Uuid::uuid3(
-            Uuid::NAMESPACE_DNS,
-            $this->pass . '|' . $s
-        );
-        return $this->save();
+        for ($i = 0; $i < 10; $i++) {
+            $api_token = Uuid::uuid4();
+            $is_api_token_used = User::where('api_token', $api_token)->first();
+
+            if ($is_api_token_used === null) {
+                $this->api_token = Uuid::uuid4();
+                return $this->save();
+            }
+        }
+
+        return false;
     }
 
     /*
@@ -167,7 +186,7 @@ final class User extends Model
      */
     public function enableTraffic(): string
     {
-        return Tools::flowAutoShow($this->transfer_enable);
+        return Tools::autoBytes($this->transfer_enable);
     }
 
     /*
@@ -179,11 +198,19 @@ final class User extends Model
     }
 
     /*
-     * 已用流量[自动单位]
+     * 当期用量[自动单位]
      */
     public function usedTraffic(): string
     {
-        return Tools::flowAutoShow($this->u + $this->d);
+        return Tools::autoBytes($this->u + $this->d);
+    }
+
+    /*
+     * 累计用量[自动单位]
+     */
+    public function totalTraffic(): string
+    {
+        return Tools::autoBytes($this->transfer_total);
     }
 
     /*
@@ -204,7 +231,7 @@ final class User extends Model
      */
     public function unusedTraffic(): string
     {
-        return Tools::flowAutoShow($this->transfer_enable - ($this->u + $this->d));
+        return Tools::autoBytes($this->transfer_enable - ($this->u + $this->d));
     }
 
     /*
@@ -226,7 +253,7 @@ final class User extends Model
      */
     public function todayUsedTraffic(): string
     {
-        return Tools::flowAutoShow($this->u + $this->d - $this->last_day_t);
+        return Tools::autoBytes($this->transfer_today);
     }
 
     /*
@@ -237,8 +264,7 @@ final class User extends Model
         if ($this->transfer_enable === 0 || $this->transfer_enable === null) {
             return 0;
         }
-        $Todayused = $this->u + $this->d - $this->last_day_t;
-        $percent = $Todayused / $this->transfer_enable;
+        $percent = $this->transfer_today / $this->transfer_enable;
         $percent = round($percent, 4);
         return $percent * 100;
     }
@@ -248,7 +274,7 @@ final class User extends Model
      */
     public function lastUsedTraffic(): string
     {
-        return Tools::flowAutoShow($this->last_day_t);
+        return Tools::autoBytes($this->u + $this->d - $this->transfer_today);
     }
 
     /*
@@ -259,8 +285,7 @@ final class User extends Model
         if ($this->transfer_enable === 0 || $this->transfer_enable === null) {
             return 0;
         }
-        $Lastused = $this->last_day_t;
-        $percent = $Lastused / $this->transfer_enable;
+        $percent = ($this->u + $this->d - $this->transfer_today) / $this->transfer_enable;
         $percent = round($percent, 4);
         return $percent * 100;
     }
@@ -315,14 +340,6 @@ final class User extends Model
     }
 
     /**
-     * 获取用户的订阅链接
-     */
-    public function getSublink(): string
-    {
-        return Tools::generateSSRSubCode($this->id);
-    }
-
-    /**
      * 删除用户的邀请码
      */
     public function clearInviteCodes(): void
@@ -331,21 +348,30 @@ final class User extends Model
     }
 
     /**
+     * 累计充值金额
+     */
+    public function getTopUp(): float
+    {
+        $number = Paylist::where('userid', $this->id)->sum('number');
+        return is_null($number) ? 0.00 : round((float) $number, 2);
+    }
+
+    /**
      * 在线 IP 个数
      */
     public function onlineIpCount(): int
     {
-        // 根据 IP 分组去重
-        $total = Ip::where('datetime', '>=', time() - 90)->where('userid', $this->id)->orderBy('userid', 'desc')->groupBy('ip')->get();
-        $ip_list = [];
-        foreach ($total as $single_record) {
-            $ip = Tools::getRealIp($single_record->ip);
-            if (Node::where('node_ip', $ip)->first() !== null) {
-                continue;
-            }
-            $ip_list[] = $ip;
-        }
-        return count($ip_list);
+        return DB::select(
+            '
+            SELECT
+                COUNT(*) AS count
+            FROM
+                online_log
+            WHERE
+                user_id = ?
+                AND last_time >= UNIX_TIMESTAMP() - 90',
+            [$this->attributes['id']]
+        )[0]->count;
     }
 
     /**
@@ -356,67 +382,17 @@ final class User extends Model
         $uid = $this->id;
         $email = $this->email;
 
-        Bought::where('userid', '=', $uid)->delete();
-        Code::where('userid', '=', $uid)->delete();
         DetectBanLog::where('user_id', '=', $uid)->delete();
         DetectLog::where('user_id', '=', $uid)->delete();
-        EmailVerify::where('email', $email)->delete();
         InviteCode::where('user_id', '=', $uid)->delete();
-        Ip::where('userid', '=', $uid)->delete();
+        OnlineLog::where('user_id', '=', $uid)->delete();
         Link::where('userid', '=', $uid)->delete();
         LoginIp::where('userid', '=', $uid)->delete();
-        PasswordReset::where('email', '=', $email)->delete();
-        TelegramSession::where('user_id', '=', $uid)->delete();
         UserSubscribeLog::where('user_id', '=', $uid)->delete();
 
         $this->delete();
 
         return true;
-    }
-
-    /**
-     * 累计充值金额
-     */
-    public function getTopUp(): float
-    {
-        $number = Code::where('userid', $this->id)->sum('number');
-        return is_null($number) ? 0.00 : round((float) $number, 2);
-    }
-
-    /**
-     * 获取累计收入
-     */
-    public function calIncome(string $req): float
-    {
-        $number = match ($req) {
-            'yesterday' => Code::whereDate('usedatetime', '=', date('Y-m-d', strtotime('-1 days')))->sum('number'),
-            'today' => Code::whereDate('usedatetime', '=', date('Y-m-d'))->sum('number'),
-            'this month' => Code::whereYear('usedatetime', '=', date('Y'))->whereMonth('usedatetime', '=', date('m'))->sum('number'),
-            'last month' => Code::whereYear('usedatetime', '=', date('Y'))->whereMonth('usedatetime', '=', date('m', strtotime('last month')))->sum('number'),
-            default => Code::sum('number'),
-        };
-        return is_null($number) ? 0.00 : round(floatval($number), 2);
-    }
-
-    /**
-     * 获取付费用户总数
-     */
-    public function paidUserCount(): int
-    {
-        return self::where('class', '!=', '0')->count();
-    }
-
-    /**
-     * 获取用户被封禁的理由
-     */
-    public function disableReason(): string
-    {
-        $reason_id = DetectLog::where('user_id', $this->id)->orderBy('id', 'DESC')->first();
-        $reason = DetectRule::find($reason_id->list_id);
-        if (is_null($reason)) {
-            return '特殊原因被禁用，了解详情请联系管理员';
-        }
-        return $reason->text;
     }
 
     /**
@@ -467,7 +443,7 @@ final class User extends Model
         ];
         if (! $this->isAbleToCheckin()) {
             $return['ok'] = false;
-            $return['msg'] = '您似乎已经签到过了...';
+            $return['msg'] = '你似乎已经签到过了...';
         } else {
             try {
                 $traffic = random_int((int) $_ENV['checkinMin'], (int) $_ENV['checkinMax']);
@@ -496,11 +472,11 @@ final class User extends Model
         $this->telegram_id = 0;
         if ($this->save()) {
             if (
-                $_ENV['enable_telegram'] === true
+                $_ENV['enable_telegram']
                 &&
-                Setting::obtain('telegram_group_bound_user') === true
+                Setting::obtain('telegram_group_bound_user')
                 &&
-                Setting::obtain('telegram_unbind_kick_member') === true
+                Setting::obtain('telegram_unbind_kick_member')
                 &&
                 ! $this->is_admin
             ) {
@@ -528,7 +504,7 @@ final class User extends Model
     public function setPort(int $Port): array
     {
         $PortOccupied = User::pluck('port')->toArray();
-        if (in_array($Port, $PortOccupied) === true) {
+        if (in_array($Port, $PortOccupied)) {
             return [
                 'ok' => false,
                 'msg' => '端口已被占用',
@@ -543,51 +519,15 @@ final class User extends Model
     }
 
     /**
-     * 用户下次流量重置时间
-     */
-    public function validUseLoop(): string
-    {
-        $boughts = Bought::where('userid', $this->id)->orderBy('id', 'desc')->get();
-        $data = [];
-        foreach ($boughts as $bought) {
-            $shop = $bought->shop();
-            if ($shop !== null && $bought->valid()) {
-                $data[] = $bought->resetTime();
-            }
-        }
-        if (count($data) === 0) {
-            return '未购买套餐.';
-        }
-        if (count($data) === 1) {
-            return $data[0];
-        }
-        return '多个有效套餐无法显示.';
-    }
-
-    /**
-     * 手动修改用户余额时增加充值记录，受限于 Config
-     *
-     * @param mixed $total 金额
-     */
-    public function addMoneyLog(mixed $total): void
-    {
-        if ($_ENV['money_from_admin'] && $total !== 0.00) {
-            $codeq = new Code();
-            $codeq->code = ($total > 0 ? '管理员赏赐' : '管理员惩戒');
-            $codeq->isused = 1;
-            $codeq->type = -1;
-            $codeq->number = $total;
-            $codeq->usedatetime = date('Y-m-d H:i:s');
-            $codeq->userid = $this->id;
-            $codeq->save();
-        }
-    }
-
-    /**
      * 发送邮件
      */
-    public function sendMail(string $subject, string $template, array $array = [], array $files = [], $is_queue = false): bool
-    {
+    public function sendMail(
+        string $subject,
+        string $template,
+        array $array = [],
+        array $files = [],
+        $is_queue = false
+    ): bool {
         if ($is_queue) {
             $emailqueue = new EmailQueue();
             $emailqueue->to_email = $this->email;
@@ -655,14 +595,12 @@ final class User extends Model
         $enable_traffic = $this->enableTraffic();
         $used_traffic = $this->usedTraffic();
         $unused_traffic = $this->unusedTraffic();
-        switch ($this->sendDailyMail) {
-            case 0:
-                return;
+        switch ($this->daily_mail_enable) {
             case 1:
                 echo 'Send daily mail to user: ' . $this->id;
                 $this->sendMail(
                     $_ENV['appName'] . '-每日流量报告以及公告',
-                    'news/daily-traffic-report.tpl',
+                    'traffic_report.tpl',
                     [
                         'user' => $this,
                         'text' => '下面是系统中目前的最新公告:<br><br>' . $ann . '<br><br>晚安！',
@@ -686,6 +624,8 @@ final class User extends Model
                     $text
                 );
                 break;
+            case 0:
+            default:
         }
     }
 
@@ -701,6 +641,11 @@ final class User extends Model
         $loginip->userid = $this->id;
         $loginip->datetime = time();
         $loginip->type = $type;
+
+        if ($type === 0) {
+            $this->last_login_time = time();
+            $this->save();
+        }
 
         return $loginip->save();
     }

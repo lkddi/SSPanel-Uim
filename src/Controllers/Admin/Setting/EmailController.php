@@ -14,7 +14,11 @@ use function json_encode;
 final class EmailController extends BaseController
 {
     public static array $update_field = [
-        'mail_driver',
+        'email_driver',
+        'email_verify_code_ttl',
+        'email_password_reset_ttl',
+        'email_request_ip_limit',
+        'email_request_address_limit',
         // SMTP
         'smtp_host',
         'smtp_username',
@@ -28,6 +32,7 @@ final class EmailController extends BaseController
         'mailgun_key',
         'mailgun_domain',
         'mailgun_sender',
+        'mailgun_sender_name',
         // Sendgrid
         'sendgrid_key',
         'sendgrid_sender',
@@ -103,7 +108,7 @@ final class EmailController extends BaseController
             Mail::send(
                 $to,
                 '测试邮件',
-                'auth/test.tpl'
+                'test.tpl'
             );
         } catch (Throwable $e) {
             return $response->withJson([

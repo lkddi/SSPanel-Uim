@@ -7,13 +7,14 @@ namespace App\Controllers\Admin;
 use App\Controllers\BaseController;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\ChatGPT;
 use App\Utils\Tools;
 use Exception;
 use Psr\Http\Message\ResponseInterface;
 use Slim\Http\Response;
 use Slim\Http\ServerRequest;
-use voku\helper\AntiXSS;
 use function array_merge;
+use function count;
 use function json_decode;
 use function json_encode;
 use function time;
@@ -50,32 +51,33 @@ final class TicketController extends BaseController
     /**
      * 后台更新工单内容
      */
-    public function update(ServerRequest $request, Response $response, array $args)
+    public function update(ServerRequest $request, Response $response, array $args): Response|ResponseInterface
     {
         $id = $args['id'];
-        $comment = $request->getParam('comment');
+        $comment = $request->getParam('comment') ?? '';
 
         if ($comment === '') {
             return $response->withJson([
                 'ret' => 0,
-                'msg' => '非法输入',
+                'msg' => '工单回复不能为空',
             ]);
         }
 
         $ticket = Ticket::where('id', $id)->first();
 
         if ($ticket === null) {
-            return $response->withStatus(302)->withHeader('Location', '/admin/ticket');
+            return $response->withJson([
+                'ret' => 0,
+                'msg' => '工单不存在',
+            ]);
         }
-
-        $antiXss = new AntiXSS();
 
         $content_old = json_decode($ticket->content, true);
         $content_new = [
             [
                 'comment_id' => $content_old[count($content_old) - 1]['comment_id'] + 1,
                 'commenter_name' => 'Admin',
-                'comment' => $antiXss->xss_clean($comment),
+                'comment' => $comment,
                 'datetime' => time(),
             ],
         ];
@@ -83,9 +85,60 @@ final class TicketController extends BaseController
         $user = User::find($ticket->userid);
         $user->sendMail(
             $_ENV['appName'] . '-工单被回复',
-            'news/warn.tpl',
+            'warn.tpl',
             [
-                'text' => '您好，有人回复了<a href="' . $_ENV['baseUrl'] . '/user/ticket/' . $ticket->id . '/view">工单</a>，请您查看。',
+                'text' => '你好，有人回复了<a href="' . $_ENV['baseUrl'] . '/user/ticket/' . $ticket->id . '/view">工单</a>，请你查看。',
+            ],
+            []
+        );
+
+        $ticket->content = json_encode(array_merge($content_old, $content_new));
+        $ticket->status = 'open_wait_user';
+        $ticket->save();
+
+        return $response->withJson([
+            'ret' => 1,
+            'msg' => '提交成功',
+        ]);
+    }
+
+    /**
+     * 喊 ChatGPT 帮忙回复工单
+     */
+    public function updateAI(ServerRequest $request, Response $response, array $args): Response|ResponseInterface
+    {
+        $id = $args['id'];
+
+        $ticket = Ticket::where('id', $id)->first();
+
+        if ($ticket === null) {
+            return $response->withJson([
+                'ret' => 0,
+                'msg' => '工单不存在',
+            ]);
+        }
+
+        $content_old = json_decode($ticket->content, true);
+        // 获取用户的第一个问题，作为 ChatGPT 的输入
+        $user_question = $content_old[0]['comment'];
+        // 这里可能要等4-5秒
+        $ai_reply = ChatGPT::askOnce($user_question);
+
+        $content_new = [
+            [
+                'comment_id' => $content_old[count($content_old) - 1]['comment_id'] + 1,
+                'commenter_name' => 'AI Admin by GPT',
+                'comment' => $ai_reply,
+                'datetime' => time(),
+            ],
+        ];
+
+        $user = User::find($ticket->userid);
+        $user->sendMail(
+            $_ENV['appName'] . '-工单被回复',
+            'warn.tpl',
+            [
+                'text' => '你好，ChatGPT 回复了<a href="' . $_ENV['baseUrl'] . '/user/ticket/' . $ticket->id . '/view">工单</a>，请你查看。',
             ],
             []
         );
@@ -105,21 +158,25 @@ final class TicketController extends BaseController
      *
      * @throws Exception
      */
-    public function ticketView(ServerRequest $request, Response $response, array $args)
+    public function ticketView(ServerRequest $request, Response $response, array $args): Response|ResponseInterface
     {
         $id = $args['id'];
         $ticket = Ticket::where('id', '=', $id)->first();
-        $comments = json_decode($ticket->content, true);
 
         if ($ticket === null) {
-            return $response->withStatus(302)->withHeader('Location', '/user/ticket');
+            return $response->withRedirect('/admin/ticket');
+        }
+
+        $comments = json_decode($ticket->content);
+
+        foreach ($comments as $comment) {
+            $comment->datetime = Tools::toDateTime((int) $comment->datetime);
         }
 
         return $response->write(
             $this->view()
                 ->assign('ticket', $ticket)
                 ->assign('comments', $comments)
-                ->registerClass('Tools', Tools::class)
                 ->fetch('admin/ticket/view.tpl')
         );
     }
@@ -132,19 +189,26 @@ final class TicketController extends BaseController
         $id = $args['id'];
         $ticket = Ticket::where('id', '=', $id)->first();
 
+        if ($ticket === null) {
+            return $response->withJson([
+                'ret' => 0,
+                'msg' => '工单不存在',
+            ]);
+        }
+
         if ($ticket->status === 'closed') {
             return $response->withJson([
                 'ret' => 0,
-                'msg' => '工单已关闭',
+                'msg' => '操作失败，工单已关闭',
             ]);
         }
 
         $user = User::find($ticket->userid);
         $user->sendMail(
             $_ENV['appName'] . '-工单已被关闭',
-            'news/warn.tpl',
+            'warn.tpl',
             [
-                'text' => '您好，您的工单 #'. $ticket->id .' 已被关闭，如果您还有问题，欢迎提交新的工单。',
+                'text' => '你好，你的工单 #'. $ticket->id .' 已被关闭，如果你还有问题，欢迎提交新的工单。',
             ],
             []
         );
@@ -181,12 +245,18 @@ final class TicketController extends BaseController
 
         foreach ($tickets as $ticket) {
             $ticket->op = '<button type="button" class="btn btn-red" id="delete-ticket" 
-            onclick="deleteTicket(' . $ticket->id . ')">删除</button>
-            <button type="button" class="btn btn-orange" id="close-ticket" 
-            onclick="closeTicket(' . $ticket->id . ')">关闭</button>
+            onclick="deleteTicket(' . $ticket->id . ')">删除</button>';
+
+            if ($ticket->status !== 'closed') {
+                $ticket->op .= '
+                <button type="button" class="btn btn-orange" id="close-ticket" 
+                onclick="closeTicket(' . $ticket->id . ')">关闭</button>';
+            }
+
+            $ticket->op .= '
             <a class="btn btn-blue" href="/admin/ticket/' . $ticket->id . '/view">查看</a>';
-            $ticket->status = Tools::getTicketStatus($ticket);
-            $ticket->type = Tools::getTicketType($ticket);
+            $ticket->status = $ticket->status();
+            $ticket->type = $ticket->type();
             $ticket->datetime = Tools::toDateTime((int) $ticket->datetime);
         }
 

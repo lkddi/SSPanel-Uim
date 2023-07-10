@@ -19,12 +19,12 @@ final class MyCommand extends Command
     /**
      * @var string Command Name
      */
-    protected $name = 'my';
+    protected string $name = 'my';
 
     /**
      * @var string Command Description
      */
-    protected $description = '[群组/私聊] 我的个人信息.';
+    protected string $description = '[群组/私聊] 我的个人信息.';
 
     /**
      * {@inheritdoc}
@@ -41,7 +41,7 @@ final class MyCommand extends Command
         $ChatID = $Message->getChat()->getId();
 
         if ($ChatID < 0) {
-            if (Setting::obtain('telegram_group_quiet') === true) {
+            if (Setting::obtain('telegram_group_quiet')) {
                 // 群组中不回应
                 return null;
             }
@@ -89,8 +89,6 @@ final class MyCommand extends Command
         $text = Reply::getUserTitle($User);
         $text .= PHP_EOL . PHP_EOL;
         $text .= Reply::getUserTrafficInfo($User);
-        $text .= PHP_EOL;
-        $text .= '流量重置时间：' . $User->validUseLoop();
         // 回送信息
         return $this->replyWithMessage(
             [
